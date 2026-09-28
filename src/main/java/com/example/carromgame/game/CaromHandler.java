@@ -14,8 +14,6 @@ import java.util.concurrent.ConcurrentHashMap;
  * Pairs connections in arrival order: first WHITE (bottom), second BLACK (top).
  */
 public class CaromHandler extends TextWebSocketHandler {
-    private record Seat(GameRoom room, int seat) {
-    }
 
     private final Object lock = new Object();
     private WebSocketSession waiting;
