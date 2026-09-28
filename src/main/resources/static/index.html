@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Network Carrom</title>
+    <style>
+        body {
+            margin: 0;
+            background: #12122a;
+            color: #fff;
+            font: 14px system-ui, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #hud {
+            width: 600px;
+            max-width: 100vw;
+            text-align: center;
+            padding: 10px 0 4px;
+        }
+
+        #status {
+            font-size: 17px;
+            font-weight: 700;
+            min-height: 22px;
+        }
+
+        #sub {
+            color: #8f98b8;
+            font-size: 12px;
+            min-height: 16px;
+        }
+
+        .cards {
+            display: flex;
+            justify-content: space-between;
+            width: 600px;
+            max-width: 100vw;
+            margin: 6px 0;
+        }
+
+        .card {
+            flex: 1;
+            margin: 0 6px;
+            padding: 8px;
+            border: 2px solid #0f3460;
+            border-radius: 10px;
+            background: #16213e;
+        }
+
+        .card.active {
+            border-color: #e94560;
+        }
+
+        canvas {
+            width: 600px;
+            max-width: 100vw;
+            touch-action: none;
+            cursor: crosshair;
+        }
+
+        #timer {
+            font-size: 18px;
+            font-weight: 700;
+            color: #e94560;
+            min-height: 24px;
+        }
+
+        #over {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: #05050fdd;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+        }
+
+        #over h1 {
+            margin: 0;
+            font-size: 34px;
+        }
+
+        button {
+            background: #e94560;
+            color: #fff;
+            border: 0;
+            padding: 10px 22px;
+            border-radius: 8px;
+            font-size: 15px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+<div id="hud">
+    <div id="status">Connecting...</div>
+    <div id="sub"></div>
+</div>
+<div class="cards">
+    <div class="card" id="c1"><b>Light coins</b> <span id="n1"></span><br><span id="s1"></span></div>
+    <div class="card" id="c2"><b>Dark coins</b> <span id="n2"></span><br><span id="s2"></span></div>
+</div>
+<canvas id="cv" width="600" height="600"></canvas>
+<div id="timer"></div>
+<div id="queen" style="color:#e8a0a8;font-size:12px"></div>
+<div id="over"><h1 id="ot"></h1>
+    <button id="again">Play again</button>
+</div>
+
+<script>
+    const B = 520, M = 40, W = 600, C = B / 2;
+    const COINS = {LIGHT: '#f6e7c4', DARK: '#2b2118', QUEEN: '#c1121f', STRIKER: '#7fd6f5'};
+    const R = {LIGHT: 11, DARK: 11, QUEEN: 11, STRIKER: 16};
+    const HALF = 170, INSET = 62, MAX_DRAG = 150;
+
+    const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+    const $ = id => document.getElementById(id);
+    let ws, me = 0, S = null, deadlineAt = 0;
+    const pieces = new Map();            // id -> {kind,x,y}
+    let aim = null;                      // {x,y,dx,dy,p} guide line (own or opponent's)
+    let drag = null, lastAimSent = 0;
+
+    // ---------------------------------------------------------------- network
+    function connect() {
+        ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/carom');
+        ws.onopen = () => $('status').textContent = 'Waiting for an opponent...';
+        ws.onclose = () => {
+            $('status').textContent = 'Disconnected';
+            $('sub').textContent = 'Reload to reconnect';
+        };
+        ws.onmessage = ev => {
+            const m = JSON.parse(ev.data);
+            switch (m.t) {
+                case 'welcome':
+                    me = m.color === 'WHITE' ? 1 : 2;
+                    break;
+                case 'wait':
+                    $('status').textContent = 'Waiting for an opponent...';
+                    break;
+                case 'left':
+                    $('status').textContent = 'Opponent left the game';
+                    $('sub').textContent = '';
+                    S = null;
+                    break;
+                case 'state':
+                    onState(m);
+                    break;
+                case 'snap':
+                    onSnap(m);
+                    break;
+                case 'place': {
+                    const s = pieces.get(0);
+                    if (s) s.x = m.x;
+                    break;
+                }
+                case 'aim':
+                    aim = m.clear ? null : m;
+                    break;
+            }
+        };
+    }
+
+    const send = o => ws && ws.readyState === 1 && ws.send(JSON.stringify(o));
+
+    function onState(m) {
+        S = m;
+        aim = null;
+        drag = null;
+        pieces.clear();
+        for (const [id, kind, x, y] of m.pieces) pieces.set(id, {kind, x, y});
+        deadlineAt = m.timeLeft >= 0 ? performance.now() + m.timeLeft : 0;
+        updateHud();
+    }
+
+    function onSnap(m) {
+        const seen = new Set();
+        for (const [id, x, y] of m.p) {
+            const p = pieces.get(id);
+            if (p) {
+                p.x = x;
+                p.y = y;
+            }
+            seen.add(id);
+        }
+        for (const id of [...pieces.keys()]) if (!seen.has(id)) pieces.delete(id);
+        if (S) S.phase = 'SHOOTING';
+    }
+
+    function updateHud() {
+        if (!S) return;
+        const mine = S.turn === me && S.phase === 'READY';
+        $('status').textContent = S.phase === 'GAME_OVER' ? 'Game over'
+            : S.phase === 'SHOOTING' ? '...' : (mine ? 'YOUR TURN' : "OPPONENT'S TURN");
+        $('sub').textContent = S.msg || (mine ? 'Slide the striker, then pull back and release to shoot' : '');
+        for (const p of [1, 2]) {
+            $('n' + p).textContent = p === me ? '(you)' : '';
+            $('s' + p).textContent = `Score ${S.score[p - 1]}  ·  Coins left ${S.left[p - 1]}` + (S.queenOwner === p ? '  ·  Queen' : '');
+            $('c' + p).classList.toggle('active', S.turn === p && S.phase !== 'GAME_OVER');
+        }
+        $('queen').textContent = S.queenOwner ? `Queen claimed by ${S.queenOwner === me ? 'you' : 'opponent'}`
+            : S.queenPending ? `${S.queenPending === me ? 'You' : 'Opponent'} must cover the Queen` : 'Queen on board';
+        const over = S.phase === 'GAME_OVER';
+        $('over').style.display = over ? 'flex' : 'none';
+        if (over) $('ot').textContent = S.winner === me ? 'You win!' : 'Opponent wins!';
+    }
+
+    $('again').onclick = () => send({t: 'reset'});
+
+    // ---------------------------------------------------------------- input
+    const baseline = () => S.turn === 1 ? B - INSET : INSET;
+    const striker = () => pieces.get(0);
+    const canAct = () => S && me && S.turn === me && S.phase === 'READY' && striker();
+
+    function toBoard(e) {
+        const r = cv.getBoundingClientRect(), k = W / r.width;
+        let cx = (e.clientX - r.left) * k - W / 2, cy = (e.clientY - r.top) * k - W / 2;
+        if (me === 2) {
+            cx = -cx;
+            cy = -cy;
+        }
+        return {x: cx + C, y: cy + C};
+    }
+
+    const clampX = x => Math.min(C + HALF - 16, Math.max(C - HALF + 16, x));
+
+    function computeAim(mx, my) {
+        const s = striker(), ddx = mx - s.x, ddy = my - s.y, len = Math.hypot(ddx, ddy);
+        if (len < 1e-6) return {dx: 0, dy: 0, p: 0};
+        let dx = -ddx / len, dy = -ddy / len;
+        const fwd = S.turn === 1 ? -1 : 1, maxA = 80 * Math.PI / 180;
+        if (dy * fwd < Math.cos(maxA)) {
+            dx = (dx >= 0 ? 1 : -1) * Math.sin(maxA);
+            dy = fwd * Math.cos(maxA);
+        }
+        return {dx, dy, p: Math.min(1, len / MAX_DRAG)};
+    }
+
+    cv.addEventListener('pointerdown', e => {
+        if (!canAct()) return;
+        cv.setPointerCapture(e.pointerId);
+        const b = toBoard(e), s = striker();
+        const onStriker = Math.hypot(b.x - s.x, b.y - s.y) <= 30;
+        const inBand = Math.abs(b.y - baseline()) <= 28 && Math.abs(b.x - C) <= HALF + 16;
+        if (inBand && !onStriker) {
+            s.x = clampX(b.x);
+            send({t: 'place', x: b.x});
+        }
+        drag = (onStriker || inBand) ? {mode: 'UNDECIDED', px: b.x, py: b.y} : null;
+    });
+
+    cv.addEventListener('pointermove', e => {
+        if (!drag || !canAct()) return;
+        const b = toBoard(e), s = striker();
+        if (drag.mode === 'UNDECIDED') {
+            const dx = b.x - drag.px, dy = b.y - drag.py;
+            if (Math.hypot(dx, dy) < 6) return;
+            drag.mode = (Math.abs(b.y - baseline()) <= 26 && Math.abs(dx) > Math.abs(dy)) ? 'MOVE' : 'AIM';
+        }
+        if (drag.mode === 'MOVE') {
+            s.x = clampX(b.x);
+            aim = null;
+            send({t: 'place', x: b.x});
+        } else {
+            const a = computeAim(b.x, b.y);
+            aim = {x: s.x, y: s.y, ...a};
+            const now = performance.now();
+            if (now - lastAimSent > 33) {
+                lastAimSent = now;
+                send({t: 'aim', x: s.x, y: s.y, dx: a.dx, dy: a.dy, p: a.p});
+            }
+        }
+    });
+
+    cv.addEventListener('pointerup', e => {
+        const d = drag;
+        drag = null;
+        if (!d || d.mode !== 'AIM' || !canAct()) return;
+        const b = toBoard(e), s = striker(), a = computeAim(b.x, b.y);
+        aim = null;
+        if (a.p * 11.25 < 0.9) {
+            $('sub').textContent = 'Pull back further to shoot';
+            return;
+        }
+        send({t: 'shot', x: s.x, dx: a.dx, dy: a.dy, p: a.p});
+    });
+    document.addEventListener('keydown', e => {
+        if (e.key === 'r' && S && S.phase === 'GAME_OVER') send({t: 'reset'});
+    });
+
+    // ---------------------------------------------------------------- drawing
+    function draw() {
+        ctx.clearRect(0, 0, W, W);
+        ctx.save();
+        ctx.translate(W / 2, W / 2);
+        if (me === 2) ctx.rotate(Math.PI);
+        ctx.translate(-W / 2 + M, -W / 2 + M);
+
+        ctx.fillStyle = '#8a5222';
+        ctx.beginPath();
+        ctx.roundRect(-16, -16, B + 32, B + 32, 14);
+        ctx.fill();
+        ctx.fillStyle = '#f2d99f';
+        ctx.fillRect(0, 0, B, B);
+        ctx.strokeStyle = '#8d6b3f';
+        ctx.lineWidth = 1.5;
+        for (const i of [37, 41]) ctx.strokeRect(i, i, B - 2 * i, B - 2 * i);
+        circle(C, C, 58, null, '#8d6b3f');
+        circle(C, C, 48, null, '#c8433f');
+        circle(C, C, 13, '#c8433f55', '#c8433f');
+        for (const y of [B - INSET, INSET]) {
+            ctx.strokeStyle = '#c8433f';
+            ctx.lineWidth = 2;
+            for (const dy of [-16, 16]) {
+                ctx.beginPath();
+                ctx.moveTo(C - HALF, y + dy);
+                ctx.lineTo(C + HALF, y + dy);
+                ctx.stroke();
+            }
+            circle(C - HALF, y, 16, null, '#c8433f');
+            circle(C + HALF, y, 16, null, '#c8433f');
+        }
+        for (const [x, y] of [[21, 21], [B - 21, 21], [21, B - 21], [B - 21, B - 21]]) {
+            circle(x, y, 18, '#5d3a16');
+            circle(x, y, 14, '#0b0b0b');
+        }
+
+        if (S && S.phase === 'READY') {           // highlight the active baseline
+            ctx.fillStyle = '#e9456022';
+            ctx.strokeStyle = '#e9456088';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.roundRect(C - HALF, baseline() - 16, HALF * 2, 32, 16);
+            ctx.fill();
+            ctx.stroke();
+        }
+        for (const p of pieces.values()) {
+            circle(p.x, p.y, R[p.kind], COINS[p.kind], '#000');
+            if (p.kind === 'STRIKER') circle(p.x, p.y, 8, null, '#3a86a8');
+        }
+        if (aim && aim.p > 0) {
+            const len = 20 + aim.p * 90, ex = aim.x + aim.dx * len, ey = aim.y + aim.dy * len;
+            ctx.setLineDash([9, 6]);
+            ctx.strokeStyle = '#e94560';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(aim.x, aim.y);
+            ctx.lineTo(ex, ey);
+            ctx.stroke();
+            ctx.setLineDash([4, 6]);
+            ctx.strokeStyle = '#00000055';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(aim.x, aim.y);
+            ctx.lineTo(aim.x - aim.dx * aim.p * MAX_DRAG, aim.y - aim.dy * aim.p * MAX_DRAG);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            circle(ex, ey, 5, '#e94560');
+        }
+        ctx.restore();
+
+        if (deadlineAt && S && S.phase === 'READY' && S.turn === me) {
+            const left = Math.max(0, Math.ceil((deadlineAt - performance.now()) / 1000));
+            $('timer').textContent = `Time left: ${left}s`;
+            $('timer').style.color = left <= 3 ? '#ff4d4d' : '#e94560';
+        } else $('timer').textContent = '';
+        requestAnimationFrame(draw);
+    }
+
+    function circle(x, y, r, fill, stroke) {
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        if (fill) {
+            ctx.fillStyle = fill;
+            ctx.fill();
+        }
+        if (stroke) {
+            ctx.strokeStyle = stroke;
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
+    }
+
+    connect();
+    requestAnimationFrame(draw);
+</script>
+</body>
+</html>
