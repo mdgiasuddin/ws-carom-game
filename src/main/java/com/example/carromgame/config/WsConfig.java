@@ -1,5 +1,6 @@
 package com.example.carromgame.config;
 
+import com.example.carromgame.game.CaromHandler;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;
 import org.springframework.web.socket.config.annotation.WebSocketConfigurer;

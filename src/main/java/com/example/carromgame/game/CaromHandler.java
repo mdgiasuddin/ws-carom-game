@@ -1,4 +1,4 @@
-package com.example.carromgame.config;
+package com.example.carromgame.game;
 
 import org.jspecify.annotations.NonNull;
 import org.springframework.web.socket.CloseStatus;
@@ -20,7 +20,6 @@ public class CaromHandler extends TextWebSocketHandler {
     private final Object lock = new Object();
     private WebSocketSession waiting;
     private final Map<String, Seat> seats = new ConcurrentHashMap<>();
-    private final Map<String, WebSocketSession> wrapped = new ConcurrentHashMap<>();
 
     @Override
     public void afterConnectionEstablished(@NonNull WebSocketSession raw) throws Exception {
@@ -28,7 +27,6 @@ public class CaromHandler extends TextWebSocketHandler {
         // Long-lived: owned by the room and closed by the container, so no try-with-resources.
         @SuppressWarnings("resource")
         WebSocketSession session = new ConcurrentWebSocketSessionDecorator(raw, 5000, 512 * 1024);
-        wrapped.put(raw.getId(), session);
 
         synchronized (lock) {
             if (waiting == null) {
@@ -51,8 +49,7 @@ public class CaromHandler extends TextWebSocketHandler {
     }
 
     @Override
-    public void afterConnectionClosed(WebSocketSession raw, @NonNull CloseStatus status) {
-        wrapped.remove(raw.getId());
+    public void afterConnectionClosed(@NonNull WebSocketSession raw, @NonNull CloseStatus status) {
         synchronized (lock) {
             if (waiting != null && waiting.getId().equals(raw.getId())) waiting = null;
         }

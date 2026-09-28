@@ -1,4 +1,4 @@
-package com.example.carromgame.config;
+package com.example.carromgame.game;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -9,9 +9,6 @@ import java.util.List;
  * NOT thread-safe: all access must happen on the room's single thread.
  */
 public class GameEngine {
-    public enum Kind {LIGHT, DARK, QUEEN, STRIKER}
-
-    public enum Phase {READY, SHOOTING, GAME_OVER}
 
     public static class Piece {
         public final int id;

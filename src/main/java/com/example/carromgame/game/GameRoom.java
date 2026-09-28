@@ -1,4 +1,4 @@
-package com.example.carromgame.config;
+package com.example.carromgame.game;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,12 +16,15 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
+import static com.example.carromgame.game.Phase.GAME_OVER;
+import static com.example.carromgame.game.Phase.SHOOTING;
+
 /**
  * One match. Every touch of the engine happens on {@link #executor}, so no locking is needed.
  */
 public class GameRoom {
     private static final Logger log = LoggerFactory.getLogger(GameRoom.class);
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     private final GameEngine engine = new GameEngine();
     private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
@@ -39,8 +42,8 @@ public class GameRoom {
     public void handle(int seat, String text) {
         executor.execute(() -> {
             try {
-                JsonNode m = JSON.readTree(text);
-                switch (m.path("t").asText()) {
+                JsonNode m = objectMapper.readTree(text);
+                switch (m.path("t").asString()) {
                     case "place" -> {
                         double x = engine.place(seat, m.path("x").asDouble(Double.NaN));
                         if (!Double.isNaN(x)) broadcast("{\"t\":\"place\",\"x\":" + fmt(x) + "}");
@@ -56,7 +59,7 @@ public class GameRoom {
                         }
                     }
                     case "reset" -> {
-                        if (engine.phase == GameEngine.Phase.GAME_OVER) {
+                        if (engine.phase == GAME_OVER) {
                             engine.reset();
                             broadcastState();
                         }
@@ -72,7 +75,7 @@ public class GameRoom {
 
     private void tick() {
         try {
-            if (engine.phase == GameEngine.Phase.SHOOTING) {
+            if (engine.phase == SHOOTING) {
                 engine.step();
                 broadcast(snapshot());
                 if (engine.atRest()) {
@@ -121,7 +124,7 @@ public class GameRoom {
             List<Object[]> ps = new ArrayList<>();
             for (GameEngine.Piece p : engine.pieces) ps.add(new Object[]{p.id, p.kind.name(), round(p.x), round(p.y)});
             s.put("pieces", ps);
-            broadcast(JSON.writeValueAsString(s));
+            broadcast(objectMapper.writeValueAsString(s));
         } catch (Exception e) {
             log.error("State serialisation failed", e);
         }
