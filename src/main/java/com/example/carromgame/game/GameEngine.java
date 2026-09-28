@@ -10,27 +10,6 @@ import java.util.List;
  */
 public class GameEngine {
 
-    public static class Piece {
-        public final int id;
-        public final Kind kind;
-        public double x, y, vx, vy;
-
-        Piece(int id, Kind kind, double x, double y) {
-            this.id = id;
-            this.kind = kind;
-            this.x = x;
-            this.y = y;
-        }
-
-        double r() {
-            return kind == Kind.STRIKER ? STRIKER_R : COIN_R;
-        }
-
-        double mass() {
-            return kind == Kind.STRIKER ? 2.2 : 1.0;
-        }
-    }
-
     static final double BOARD = 520, C = BOARD / 2;
     static final double COIN_R = 11, STRIKER_R = 16, POCKET_R = 14, POCKET_INSET = 21;
     static final double BASELINE_INSET = 62, HALF = 170;

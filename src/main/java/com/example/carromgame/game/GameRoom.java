@@ -100,7 +100,7 @@ public class GameRoom {
     private String snapshot() {
         StringBuilder sb = new StringBuilder("{\"t\":\"snap\",\"p\":[");
         boolean first = true;
-        for (GameEngine.Piece p : engine.pieces) {
+        for (Piece p : engine.pieces) {
             if (!first) sb.append(',');
             first = false;
             sb.append('[').append(p.id).append(',').append(fmt(p.x)).append(',').append(fmt(p.y)).append(']');
@@ -122,7 +122,7 @@ public class GameRoom {
             s.put("queenOwner", engine.queenOwner);
             s.put("queenPending", engine.queenPending);
             List<Object[]> ps = new ArrayList<>();
-            for (GameEngine.Piece p : engine.pieces) ps.add(new Object[]{p.id, p.kind.name(), round(p.x), round(p.y)});
+            for (Piece p : engine.pieces) ps.add(new Object[]{p.id, p.kind.name(), round(p.x), round(p.y)});
             s.put("pieces", ps);
             broadcast(objectMapper.writeValueAsString(s));
         } catch (Exception e) {
