@@ -9,25 +9,12 @@
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>com.example</groupId>
-    <artifactId>carrom-game</artifactId>
+    <artifactId>carom-game</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>carrom-game</name>
-    <description>carrom-game</description>
-    <url/>
-    <licenses>
-        <license/>
-    </licenses>
-    <developers>
-        <developer/>
-    </developers>
-    <scm>
-        <connection/>
-        <developerConnection/>
-        <tag/>
-        <url/>
-    </scm>
+    <name>carom-game</name>
+    <description>carom-game</description>
     <properties>
-        <java.version>21</java.version>
+        <java.version>25</java.version>
     </properties>
     <dependencies>
         <dependency>

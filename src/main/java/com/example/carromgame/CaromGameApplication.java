@@ -4,10 +4,10 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class CarromGameApplication {
+public class CaromGameApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(CarromGameApplication.class, args);
+        SpringApplication.run(CaromGameApplication.class, args);
     }
 
 }
