@@ -10,14 +10,15 @@ import tools.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 
 import static com.example.carromgame.game.Phase.GAME_OVER;
 import static com.example.carromgame.game.Phase.SHOOTING;
+import static java.lang.Double.NaN;
+import static java.util.Locale.ROOT;
+import static java.util.concurrent.TimeUnit.NANOSECONDS;
 
 /**
  * One match. Every touch of the engine happens on {@link #executor}, so no locking is needed.
@@ -36,7 +37,7 @@ public class GameRoom {
         send(1, "{\"t\":\"welcome\",\"color\":\"WHITE\"}");
         send(2, "{\"t\":\"welcome\",\"color\":\"BLACK\"}");
         broadcastState();
-        executor.scheduleAtFixedRate(this::tick, 0, 16_666_667, TimeUnit.NANOSECONDS);
+        executor.scheduleAtFixedRate(this::tick, 0, 16_666_667, NANOSECONDS);
     }
 
     public void handle(int seat, String text) {
@@ -45,15 +46,15 @@ public class GameRoom {
                 JsonNode m = objectMapper.readTree(text);
                 switch (m.path("t").asString()) {
                     case "place" -> {
-                        double x = engine.place(seat, m.path("x").asDouble(Double.NaN));
+                        double x = engine.place(seat, m.path("x").asDouble(NaN));
                         if (!Double.isNaN(x)) broadcast("{\"t\":\"place\",\"x\":" + fmt(x) + "}");
                     }
                     case "aim" -> {
                         if (engine.canAct(seat)) send(3 - seat, text);   // opponent sees the guide line
                     }
                     case "shot" -> {
-                        if (engine.shoot(seat, m.path("x").asDouble(Double.NaN), m.path("dx").asDouble(Double.NaN),
-                                m.path("dy").asDouble(Double.NaN), m.path("p").asDouble(Double.NaN))) {
+                        if (engine.shoot(seat, m.path("x").asDouble(NaN), m.path("dx").asDouble(NaN),
+                                m.path("dy").asDouble(NaN), m.path("p").asDouble(NaN))) {
                             broadcast("{\"t\":\"aim\",\"clear\":true}");
                             broadcastState();
                         }
@@ -149,6 +150,6 @@ public class GameRoom {
     }
 
     private static String fmt(double v) {
-        return String.format(Locale.ROOT, "%.2f", v);
+        return String.format(ROOT, "%.2f", v);
     }
 }
