@@ -3,6 +3,14 @@ package com.example.carromgame.game;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.example.carromgame.game.Kind.DARK;
+import static com.example.carromgame.game.Kind.LIGHT;
+import static com.example.carromgame.game.Kind.QUEEN;
+import static com.example.carromgame.game.Kind.STRIKER;
+import static com.example.carromgame.game.Phase.GAME_OVER;
+import static com.example.carromgame.game.Phase.READY;
+import static com.example.carromgame.game.Phase.SHOOTING;
+
 /**
  * Pure game model: physics + rules. Board coordinates are 0..520 on both axes.
  * Player 1 (light coins, WHITE) shoots from the bottom, player 2 (dark, BLACK) from the top.
@@ -47,10 +55,10 @@ public class GameEngine {
         queenOnBoard = true;
         winner = 0;
         turn = 1;
-        phase = Phase.READY;
+        phase = READY;
         potted.clear();
         strikerPotted = false;
-        pieces.add(new Piece(nextId++, Kind.QUEEN, C, C));
+        pieces.add(new Piece(nextId++, QUEEN, C, C));
         ring(6, 2 * COIN_R, 0);
         ring(12, 4 * COIN_R, Math.PI / 12);
         striker = null;
@@ -62,13 +70,13 @@ public class GameEngine {
     private void ring(int count, double radius, double offset) {
         for (int i = 0; i < count; i++) {
             double a = offset + 2 * Math.PI * i / count;
-            pieces.add(new Piece(nextId++, i % 2 == 0 ? Kind.LIGHT : Kind.DARK,
+            pieces.add(new Piece(nextId++, i % 2 == 0 ? LIGHT : DARK,
                     C + radius * Math.cos(a), C + radius * Math.sin(a)));
         }
     }
 
     static Kind coin(int player) {
-        return player == 1 ? Kind.LIGHT : Kind.DARK;
+        return player == 1 ? LIGHT : DARK;
     }
 
     static double baselineY(int player) {
@@ -86,7 +94,7 @@ public class GameEngine {
 
     // ------------------------------------------------------------------ commands
     public boolean canAct(int player) {
-        return phase == Phase.READY && turn == player;
+        return phase == READY && turn == player;
     }
 
     /**
@@ -112,7 +120,7 @@ public class GameEngine {
             dx = (dx >= 0 ? 1 : -1) * Math.sin(maxA);
             dy = fwd * Math.cos(maxA);
         }
-        double speed = Math.min(1, Math.max(0, power)) * MAX_SPEED;
+        double speed = Math.clamp(power, 0, 1) * MAX_SPEED;
         if (speed < MIN_SPEED) return false;
 
         place(player, x);
@@ -120,7 +128,7 @@ public class GameEngine {
         striker.vy = dy * speed;
         potted.clear();
         strikerPotted = false;
-        phase = Phase.SHOOTING;
+        phase = SHOOTING;
         deadline = 0;
         message = "";
         return true;
@@ -130,7 +138,7 @@ public class GameEngine {
      * Called every tick while READY. Returns true if the turn was forfeited.
      */
     public boolean checkTimeout(long now) {
-        if (phase != Phase.READY || deadline == 0 || now < deadline) return false;
+        if (phase != READY || deadline == 0 || now < deadline) return false;
         message = "Player " + turn + " ran out of time - turn passes";
         turn = 3 - turn;
         placeStrikerForTurn();
@@ -139,7 +147,7 @@ public class GameEngine {
     }
 
     public long millisLeft(long now) {
-        return (phase == Phase.READY && deadline != 0) ? Math.max(0, (deadline - now) / 1_000_000) : -1;
+        return (phase == READY && deadline != 0) ? Math.max(0, (deadline - now) / 1_000_000) : -1;
     }
 
     // ------------------------------------------------------------------ physics
@@ -230,10 +238,10 @@ public class GameEngine {
             for (double[] c : pockets()) if (Math.hypot(p.x - c[0], p.y - c[1]) < POCKET_R - 2) in = true;
             if (!in) continue;
             pieces.remove(i);
-            if (p.kind == Kind.STRIKER) strikerPotted = true;
+            if (p.kind == STRIKER) strikerPotted = true;
             else {
                 potted.add(p.kind);
-                if (p.kind == Kind.QUEEN) queenOnBoard = false;
+                if (p.kind == QUEEN) queenOnBoard = false;
             }
         }
     }
@@ -249,7 +257,7 @@ public class GameEngine {
         int own = 0, riv = 0;
         boolean queen = false;
         for (Kind k : potted) {
-            if (k == Kind.QUEEN) queen = true;
+            if (k == QUEEN) queen = true;
             else if (k == mine) own++;
             else riv++;
         }
@@ -328,7 +336,7 @@ public class GameEngine {
         else if (pocketed[me] >= COINS) winner = me;
 
         if (winner != 0) {
-            phase = Phase.GAME_OVER;
+            phase = GAME_OVER;
             deadline = 0;
             message = "Player " + winner + " wins!";
             if (striker == null || !pieces.contains(striker)) {
@@ -338,14 +346,14 @@ public class GameEngine {
             return;
         }
         if (!again) turn = rv;
-        phase = Phase.READY;
+        phase = READY;
         placeStrikerForTurn();
         deadline = System.nanoTime() + TURN_NANOS;
     }
 
     private void restoreQueen() {
         queenPending = 0;
-        if (!queenOnBoard && queenOwner == 0 && spawn(Kind.QUEEN)) queenOnBoard = true;
+        if (!queenOnBoard && queenOwner == 0 && spawn(QUEEN)) queenOnBoard = true;
     }
 
     private boolean spawn(Kind kind) {
@@ -372,7 +380,7 @@ public class GameEngine {
     private void placeStrikerForTurn() {
         double y = baselineY(turn);
         if (striker == null || !pieces.contains(striker)) {
-            striker = new Piece(0, Kind.STRIKER, C, y);
+            striker = new Piece(0, STRIKER, C, y);
             pieces.add(striker);
         }
         striker.vx = striker.vy = 0;
