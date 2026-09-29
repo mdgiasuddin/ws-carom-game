@@ -10,6 +10,7 @@ import static com.example.carromgame.game.Kind.STRIKER;
 import static com.example.carromgame.game.Phase.GAME_OVER;
 import static com.example.carromgame.game.Phase.READY;
 import static com.example.carromgame.game.Phase.SHOOTING;
+import static java.lang.Double.NaN;
 
 /**
  * Pure game model: physics + rules. Board coordinates are 0..520 on both axes.
@@ -101,7 +102,7 @@ public class GameEngine {
      * Returns the legal x the striker ended up at, or NaN if the command was rejected.
      */
     public double place(int player, double x) {
-        if (!canAct(player) || !Double.isFinite(x)) return Double.NaN;
+        if (!canAct(player) || !Double.isFinite(x)) return NaN;
         striker.x = nearestLegalX(x, baselineY(turn));
         striker.y = baselineY(turn);
         striker.vx = striker.vy = 0;
@@ -390,7 +391,7 @@ public class GameEngine {
 
     private double nearestLegalX(double desired, double y) {
         double lo = C - HALF + STRIKER_R, hi = C + HALF - STRIKER_R;
-        double t = Math.min(hi, Math.max(lo, desired));
+        double t = Math.clamp(desired, lo, hi);
         if (clear(t, y)) return t;
         for (double off = 2; off <= hi - lo; off += 2)
             for (int side = -1; side <= 1; side += 2) {
