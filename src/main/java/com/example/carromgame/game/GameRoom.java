@@ -69,7 +69,7 @@ public class GameRoom {
                     }
                 }
             } catch (Exception e) {
-                log.warn("Bad message from seat {}: {}", seatId, e.toString());
+                log.warn("Bad message from seatId {}: {}", seatId, e.toString());
             }
         });
     }
@@ -141,7 +141,7 @@ public class GameRoom {
         try {
             if (session != null && session.isOpen()) session.sendMessage(new TextMessage(msg));
         } catch (Exception e) {
-            log.debug("Send to seat {} failed: {}", seatId, e.toString());
+            log.debug("Send to seatId {} failed: {}", seatId, e.toString());
         }
     }
 

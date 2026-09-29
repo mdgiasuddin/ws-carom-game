@@ -43,7 +43,7 @@ public class CaromHandler extends TextWebSocketHandler {
     @Override
     protected void handleTextMessage(WebSocketSession raw, @NonNull TextMessage message) {
         Seat seat = seatMap.get(raw.getId());
-        if (seat != null) seat.room().handle(seat.seat(), message.getPayload());
+        if (seat != null) seat.room().handle(seat.seatId(), message.getPayload());
     }
 
     @Override
@@ -53,7 +53,7 @@ public class CaromHandler extends TextWebSocketHandler {
         }
         Seat seat = seatMap.remove(raw.getId());
         if (seat != null) {
-            seat.room().close(seat.seat());
+            seat.room().close(seat.seatId());
             for (var e : seatMap.entrySet())
                 if (e.getValue().room() == seat.room()) seatMap.remove(e.getKey());
         }
