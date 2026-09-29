@@ -29,31 +29,31 @@ public class GameRoom {
 
     private final GameEngine engine = new GameEngine();
     private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
-    private final WebSocketSession[] seats = new WebSocketSession[3]; // 1 = WHITE, 2 = BLACK
+    private final WebSocketSession[] sessions = new WebSocketSession[3]; // 1 = WHITE, 2 = BLACK
 
     public GameRoom(WebSocketSession white, WebSocketSession black) {
-        seats[1] = white;
-        seats[2] = black;
+        sessions[1] = white;
+        sessions[2] = black;
         send(1, "{\"t\":\"welcome\",\"color\":\"WHITE\"}");
         send(2, "{\"t\":\"welcome\",\"color\":\"BLACK\"}");
         broadcastState();
         executor.scheduleAtFixedRate(this::tick, 0, 16_666_667, NANOSECONDS);
     }
 
-    public void handle(int seat, String text) {
+    public void handle(int seatId, String text) {
         executor.execute(() -> {
             try {
                 JsonNode m = objectMapper.readTree(text);
                 switch (m.path("t").asString()) {
                     case "place" -> {
-                        double x = engine.place(seat, m.path("x").asDouble(NaN));
+                        double x = engine.place(seatId, m.path("x").asDouble(NaN));
                         if (!Double.isNaN(x)) broadcast("{\"t\":\"place\",\"x\":" + fmt(x) + "}");
                     }
                     case "aim" -> {
-                        if (engine.canAct(seat)) send(3 - seat, text);   // opponent sees the guide line
+                        if (engine.canAct(seatId)) send(3 - seatId, text);   // opponent sees the guide line
                     }
                     case "shot" -> {
-                        if (engine.shoot(seat, m.path("x").asDouble(NaN), m.path("dx").asDouble(NaN),
+                        if (engine.shoot(seatId, m.path("x").asDouble(NaN), m.path("dx").asDouble(NaN),
                                 m.path("dy").asDouble(NaN), m.path("p").asDouble(NaN))) {
                             broadcast("{\"t\":\"aim\",\"clear\":true}");
                             broadcastState();
@@ -69,7 +69,7 @@ public class GameRoom {
                     }
                 }
             } catch (Exception e) {
-                log.warn("Bad message from seat {}: {}", seat, e.toString());
+                log.warn("Bad message from seat {}: {}", seatId, e.toString());
             }
         });
     }
@@ -92,9 +92,9 @@ public class GameRoom {
         }
     }
 
-    public void close(int leavingSeat) {
+    public void close(int leavingSeatId) {
         executor.shutdownNow();
-        send(3 - leavingSeat, "{\"t\":\"left\"}");
+        send(3 - leavingSeatId, "{\"t\":\"left\"}");
     }
 
     // ---------------------------------------------------------------- outgoing
@@ -136,12 +136,12 @@ public class GameRoom {
         send(2, msg);
     }
 
-    private void send(int seat, String msg) {
-        WebSocketSession s = seats[seat];
+    private void send(int seatId, String msg) {
+        WebSocketSession session = sessions[seatId];
         try {
-            if (s != null && s.isOpen()) s.sendMessage(new TextMessage(msg));
+            if (session != null && session.isOpen()) session.sendMessage(new TextMessage(msg));
         } catch (Exception e) {
-            log.debug("Send to seat {} failed: {}", seat, e.toString());
+            log.debug("Send to seat {} failed: {}", seatId, e.toString());
         }
     }
 
