@@ -94,22 +94,115 @@
             font-size: 15px;
             cursor: pointer;
         }
+
+        #lobby {
+            width: min(360px, 90vw);
+            background: #16213e;
+            border-radius: 12px;
+            padding: 24px;
+            text-align: center;
+        }
+
+        #lobby h1 {
+            margin: 0 0 6px;
+            font-size: 22px;
+        }
+
+        #lobby p {
+            margin: 0 0 18px;
+            color: #8f98b8;
+            font-size: 12px;
+        }
+
+        #lobby .codeRow {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        #lobby #genCode {
+            font-size: 26px;
+            font-weight: 700;
+            letter-spacing: 6px;
+            background: #0f1631;
+            border: 1px solid #39456b;
+            border-radius: 8px;
+            padding: 10px 16px;
+        }
+
+        #lobby #refreshBtn {
+            padding: 10px 14px;
+            font-size: 18px;
+            line-height: 1;
+        }
+
+        #lobby #joinBtn {
+            width: 100%;
+        }
+
+        #lobby #lobbyMsg {
+            color: #ff8a8a;
+            font-size: 13px;
+            min-height: 16px;
+            margin-top: 10px;
+        }
+
+        #roomBar {
+            width: 600px;
+            max-width: 100vw;
+            box-sizing: border-box;
+            text-align: center;
+            background: #16213e;
+            border-radius: 8px;
+            padding: 8px 14px;
+            font-size: 13px;
+            color: #c9d1e8;
+            margin-bottom: 6px;
+        }
+
+        #roomBar b {
+            letter-spacing: 2px;
+            color: #fff;
+        }
+
+        #game {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+        }
     </style>
 </head>
 <body>
-<div id="hud">
-    <div id="status">Connecting...</div>
-    <div id="sub"></div>
+
+<div id="lobby">
+    <h1>Network Carrom</h1>
+    <p>Share this code with a friend, or refresh for a new one.</p>
+    <div class="codeRow">
+        <span id="genCode"></span>
+        <button id="refreshBtn" title="Get a new code">&#x21bb;</button>
+    </div>
+    <button id="joinBtn">Join</button>
+    <div id="lobbyMsg"></div>
 </div>
-<div class="cards">
-    <div class="card" id="c1"><b>Light coins</b> <span id="n1"></span><br><span id="s1"></span></div>
-    <div class="card" id="c2"><b>Dark coins</b> <span id="n2"></span><br><span id="s2"></span></div>
-</div>
-<canvas id="cv" width="600" height="600"></canvas>
-<div id="timer"></div>
-<div id="queen" style="color:#e8a0a8;font-size:12px"></div>
-<div id="over"><h1 id="ot"></h1>
-    <button id="again">Play again</button>
+
+<div id="game">
+    <div id="roomBar">Room code: <b id="roomCode"></b></div>
+    <div id="hud">
+        <div id="status">Connecting...</div>
+        <div id="sub"></div>
+    </div>
+    <div class="cards">
+        <div class="card" id="c1"><b>Light coins</b> <span id="n1"></span><br><span id="s1"></span></div>
+        <div class="card" id="c2"><b>Dark coins</b> <span id="n2"></span><br><span id="s2"></span></div>
+    </div>
+    <canvas id="cv" width="600" height="600"></canvas>
+    <div id="timer"></div>
+    <div id="queen" style="color:#e8a0a8;font-size:12px"></div>
+    <div id="over"><h1 id="ot"></h1>
+        <button id="again">Play again</button>
+    </div>
 </div>
 
 <script>
@@ -125,13 +218,25 @@
     let aim = null;                      // {x,y,dx,dy,p} guide line (own or opponent's)
     let drag = null, lastAimSent = 0;
 
+    // Unambiguous charset: no 0/O or 1/I, so a code read aloud or handwritten can't be misheard.
+    const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const genCode = () => Array.from({length: 5}, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
+    const sanitize = s => (s || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 20);
+
     // ---------------------------------------------------------------- network
-    function connect() {
-        ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/carom');
+    function connect(code) {
+        $('roomCode').textContent = code;
+        $('lobby').style.display = 'none';
+        $('game').style.display = 'flex';
+
+        ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host
+            + '/ws/carom?room=' + encodeURIComponent(code));
         ws.onopen = () => $('status').textContent = 'Waiting for an opponent...';
         ws.onclose = () => {
-            $('status').textContent = 'Disconnected';
-            $('sub').textContent = 'Reload to reconnect';
+            if (S) {
+                $('status').textContent = 'Disconnected';
+                $('sub').textContent = 'Reload to reconnect';
+            }
         };
         ws.onmessage = ev => {
             const m = JSON.parse(ev.data);
@@ -140,7 +245,7 @@
                     me = m.color === 'WHITE' ? 1 : 2;
                     break;
                 case 'wait':
-                    $('status').textContent = 'Waiting for an opponent...';
+                    $('status').textContent = 'Waiting for an opponent to join with this code...';
                     break;
                 case 'left':
                     $('status').textContent = 'Opponent left the game';
@@ -161,11 +266,41 @@
                 case 'aim':
                     aim = m.clear ? null : m;
                     break;
+                case 'error':
+                    // Before a game exists (bad/full room code) there's no board to show it on,
+                    // so return to the lobby with the reason instead.
+                    if (!S) {
+                        $('game').style.display = 'none';
+                        $('lobby').style.display = 'block';
+                        $('lobbyMsg').textContent = m.msg;
+                    }
+                    break;
             }
         };
     }
 
     const send = o => ws && ws.readyState === 1 && ws.send(JSON.stringify(o));
+
+    // ---------------------------------------------------------------- lobby
+    // No typing: a code is generated as soon as the lobby loads. Refresh swaps it for a new one;
+    // Join connects with whatever code is currently shown (this becomes the match's code - a friend
+    // joins the same match by opening the link with ?room=CODE once you share it).
+    let lobbyCode = genCode();
+    $('genCode').textContent = lobbyCode;
+
+    $('refreshBtn').onclick = () => {
+        lobbyCode = genCode();
+        $('genCode').textContent = lobbyCode;
+        $('lobbyMsg').textContent = '';
+    };
+    $('joinBtn').onclick = () => {
+        history.replaceState(null, '', '?room=' + lobbyCode);
+        connect(lobbyCode);
+    };
+
+    // A link with ?room=CODE joins that game directly; otherwise show the lobby.
+    const urlCode = sanitize(new URLSearchParams(location.search).get('room'));
+    if (urlCode) connect(urlCode);
 
     function onState(m) {
         S = m;
@@ -385,7 +520,6 @@
         }
     }
 
-    connect();
     requestAnimationFrame(draw);
 </script>
 </body>
